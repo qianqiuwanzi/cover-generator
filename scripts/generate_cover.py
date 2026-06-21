@@ -56,7 +56,12 @@ from huazi_templates import (
 # 基础常量
 # ============================================================
 
-CANVAS_SIZE = (540, 720)
+CANVAS_SIZE = (1200, 1600)  # 3:4 竖屏，高分辨率
+SCALE = CANVAS_SIZE[0] / 540  # ≈ 2.222 — 等比缩放因子（原 540×720 → 1200×1600）
+
+def _s(v):
+    """等比缩放像素值（540→1200）"""
+    return int(v * SCALE)
 
 # ============================================================
 # ★ 多品类模板注册表 v3.0
@@ -540,8 +545,8 @@ def _font(size, bold=False, family=None, weight=None):
 _FONT_FAMILY = None       # 默认字体家族
 _FONT_WEIGHT_TITLE = "Bold"
 _FONT_WEIGHT_BODY = "Regular"
-_TITLE_SIZE = 46
-_SUBTITLE_SIZE = 26
+_TITLE_SIZE = int(46 * SCALE)     # ≈ 102
+_SUBTITLE_SIZE = int(26 * SCALE)  # ≈ 58
 
 # ★ v4.0: 全局花字配置
 _HUAZI_TITLE = None      # None=自动匹配模板
@@ -602,7 +607,9 @@ def _text_size(text, font):
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
 
-def _render_text_stroke(base, xy, text, font, fill_color, stroke_color, stroke_width=3):
+def _render_text_stroke(base, xy, text, font, fill_color, stroke_color, stroke_width=None):
+    if stroke_width is None:
+        stroke_width = int(3 * SCALE)
     x, y = xy
     draw = ImageDraw.Draw(base)
     for dx in range(-stroke_width, stroke_width + 1):
@@ -612,7 +619,9 @@ def _render_text_stroke(base, xy, text, font, fill_color, stroke_color, stroke_w
     draw.text((x, y), text, fill=fill_color, font=font)
 
 
-def _render_text_glow(base, xy, text, font, fill_color, glow_color, glow_radius=8):
+def _render_text_glow(base, xy, text, font, fill_color, glow_color, glow_radius=None):
+    if glow_radius is None:
+        glow_radius = _s(8)
     x, y = xy
     tw, th = _text_size(text, font)
     pad = glow_radius * 2
@@ -635,23 +644,31 @@ def _render_text_slant(base, xy, text, font, fill_color, angle=12):
     base.paste(sheared, (x, y), sheared)
 
 
-def _render_text_block(base, xy, text, font, fill_color, block_color, padding=8):
+def _render_text_block(base, xy, text, font, fill_color, block_color, padding=None):
+    if padding is None:
+        padding = _s(8)
     x, y = xy
     tw, th = _text_size(text, font)
     draw = ImageDraw.Draw(base)
     draw.rounded_rectangle(
         [x - padding, y - padding // 2, x + tw + padding, y + th + padding // 2],
-        radius=6, fill=block_color)
+        radius=_s(6), fill=block_color)
     draw.text((x, y), text, fill=fill_color, font=font)
 
 
-def _text_with_shadow(draw, xy, text, font, fill, shadow_color=(0, 0, 0), offset=2):
+def _text_with_shadow(draw, xy, text, font, fill, shadow_color=(0, 0, 0), offset=None):
+    if offset is None:
+        offset = _s(2)
     x, y = xy
     draw.text((x + offset, y + offset), text, fill=shadow_color, font=font)
     draw.text((x, y), text, fill=fill, font=font)
 
 
-def _render_rich_line(base, t, segments, x, y, base_font_size=46, line_spacing=56):
+def _render_rich_line(base, t, segments, x, y, base_font_size=None, line_spacing=None):
+    if base_font_size is None:
+        base_font_size = _s(46)
+    if line_spacing is None:
+        line_spacing = _s(56)
     draw = ImageDraw.Draw(base)
     cx = x
     for text, style in segments:
@@ -666,7 +683,7 @@ def _render_rich_line(base, t, segments, x, y, base_font_size=46, line_spacing=5
         stroke_only = style.get('stroke_only', False)
         invert = style.get('invert', False)
 
-        size = base_font_size + (2 if stroke_only else 0)
+        size = base_font_size + (_s(2) if stroke_only else 0)
         font = _font(size, bold=bold or accent or glow)
 
         if accent:       fg = t["accent"]
@@ -676,124 +693,170 @@ def _render_rich_line(base, t, segments, x, y, base_font_size=46, line_spacing=5
 
         if glow:
             _render_text_glow(base, (cx, y), text, font, fg,
-                            (*t["glow_color"], 180), glow_radius=10)
-            cx += _text_size(text, font)[0] + 6
+                            (*t["glow_color"], 180), glow_radius=_s(10))
+            cx += _text_size(text, font)[0] + _s(6)
         elif stroke_only:
             _render_text_stroke(base, (cx, y), text, font, t["bg_color"],
-                              t["accent"], stroke_width=3)
-            cx += _text_size(text, font)[0] + 6
+                              t["accent"], stroke_width=_s(3))
+            cx += _text_size(text, font)[0] + _s(6)
         elif block:
             _render_text_block(base, (cx, y), text, font,
                              t.get("block_text", (255, 255, 255)),
-                             t.get("block_bg", t["accent"]), padding=8)
-            cx += _text_size(text, font)[0] + 16 + 6
+                             t.get("block_bg", t["accent"]), padding=_s(8))
+            cx += _text_size(text, font)[0] + _s(16) + _s(6)
         elif slant:
             _render_text_slant(base, (cx, y), text, font, fg, angle=12)
             tw = _text_size(text, font)[0]
             th = _text_size(text, font)[1]
-            pad = abs(int(th * math.tan(math.radians(12)))) + 5
-            cx += tw + pad + 4
+            pad = abs(int(th * math.tan(math.radians(12)))) + _s(5)
+            cx += tw + pad + _s(4)
         else:
             if t.get("is_dark", True):
                 if accent or secondary:
                     _render_text_stroke(base, (cx, y), text, font, fg,
-                                      t["stroke_color"], stroke_width=2)
+                                      t["stroke_color"], stroke_width=_s(2))
                 else:
                     _text_with_shadow(draw, (cx, y), text, font, fg,
-                                    shadow_color=t["stroke_color"], offset=2)
+                                    shadow_color=t["stroke_color"], offset=_s(2))
             else:
                 draw.text((cx, y), text, fill=fg, font=font)
-            cx += _text_size(text, font)[0] + 4
+            cx += _text_size(text, font)[0] + _s(4)
     return cx
 
 
-def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_family=None, font_size=46):
+def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_family=None, font_size=None, align="left"):
     """渲染标题（v4.0: 支持花字）"""
-    all_segments = parse_rich_text(rich_title)
-    if not all_segments:
+    if font_size is None:
+        font_size = _TITLE_SIZE
+    if not rich_title:
         return y_start
-    total_text = "".join(s[0] for s in all_segments)
-    wrapped_lines = textwrap.wrap(total_text, width=9)
-    lines, char_idx = [], 0
-    for line_text in wrapped_lines:
-        line_segs, remaining = [], len(line_text)
-        while remaining > 0 and char_idx < len(all_segments):
-            seg_text, seg_style = all_segments[char_idx]
-            if len(seg_text) <= remaining:
-                line_segs.append((seg_text, seg_style))
-                remaining -= len(seg_text); char_idx += 1
-            else:
-                line_segs.append((seg_text[:remaining], seg_style))
-                all_segments[char_idx] = (seg_text[remaining:], seg_style)
-                remaining = 0
-        if line_segs:
-            lines.append(line_segs)
-    cy = y_start
+
+    # ★ v4.3: 按 \n 拆分，每行独立 parse + textwrap
+    raw_lines = rich_title.split('\n')
+    all_rendered_lines = []  # [(line_text, list_of_segments), ...]
+    for raw_line in raw_lines:
+        if not raw_line.strip():
+            continue
+        segs = parse_rich_text(raw_line)
+        line_text = ''.join(s[0] for s in segs)
+        wrapped = textwrap.wrap(line_text, width=15) if line_text else ['']
+        # 把 segs 分配到每个 wrapped 子行
+        seg_idx = 0
+        for wline in wrapped:
+            wsegs, rem = [], len(wline)
+            while rem > 0 and seg_idx < len(segs):
+                st, ss = segs[seg_idx]
+                if len(st) <= rem:
+                    wsegs.append((st, ss)); rem -= len(st); seg_idx += 1
+                else:
+                    wsegs.append((st[:rem], ss)); segs[seg_idx] = (st[rem:], ss); rem = 0
+            if wsegs:
+                all_rendered_lines.append((wline, wsegs))
 
     # 确定花字
     effective_huazi = huazi or _HUAZI_TITLE
     if effective_huazi is None:
-        # 自动匹配: 根据模板推荐花字
-        effective_huazi = None  # None = 不使用花字，走默认渲染
+        effective_huazi = None
 
-    for line_text in wrapped_lines:
-        tw_line = _text_size(line_text, _font(font_size, bold=True, family=font_family))[0]
-        line_x = 28  # 默认左对齐
+    cy = y_start
+    for line_text, line_segs in all_rendered_lines:
+        if not line_text.strip():
+            continue
 
-        if effective_huazi and HUAZI_TEMPLATES.get(effective_huazi):
-            # ★ 花字渲染：整行文字 + 多层效果
+        has_bold = any(ss.get('accent') or ss.get('bold') or ss.get('glow') for _, ss in line_segs)
+        use_huazi = effective_huazi and HUAZI_TEMPLATES.get(effective_huazi)
+
+        if align == "center":
+            if use_huazi:
+                # ★ 方案B：花字先渲染到临时层，实测像素宽度，再居中
+                tmp_w = base.width
+                tmp_h = int(font_size * 2.5)
+                tmp = Image.new("RGBA", (tmp_w, tmp_h), (0, 0, 0, 0))
+                try:
+                    hr = get_huazi_renderer()
+                    hr.render(tmp, line_text, effective_huazi,
+                             0, int(font_size * 0.3),
+                             font_family=font_family or _FONT_FAMILY,
+                             font_weight="Bold", font_size=font_size,
+                             accent_color=t.get("accent"),
+                             bg_color=t.get("bg_color"))
+                    # 检测实际渲染像素的右边界
+                    tmp_arr = np.array(tmp)
+                    alpha = tmp_arr[:, :, 3]
+                    col_alpha = np.max(alpha, axis=0)
+                    nonzero = np.where(col_alpha > 10)[0]
+                    actual_w = nonzero[-1] + 1 if len(nonzero) > 0 else tmp_w
+                    line_x = max(0, (base.width - actual_w) // 2)
+                except Exception:
+                    tw = _text_size(line_text, _font(font_size, bold=has_bold, family=font_family))[0]
+                    line_x = (base.width - tw) // 2
+            else:
+                # 非花字：_text_size 测量准确
+                tw = _text_size(line_text, _font(font_size, bold=has_bold, family=font_family))[0]
+                line_x = (base.width - tw) // 2
+        else:
+            line_x = _s(28)
+
+        if use_huazi:
             try:
                 hr = get_huazi_renderer()
                 hr.render(base, line_text, effective_huazi,
                          line_x, cy,
                          font_family=font_family or _FONT_FAMILY,
-                         font_weight="Bold", font_size=font_size,
+                         font_weight="Bold" if has_bold else "Regular",
+                         font_size=font_size,
                          accent_color=t.get("accent"),
                          bg_color=t.get("bg_color"))
             except Exception:
-                # 花字失败时回退到普通渲染
-                _render_rich_line(base, t, parse_rich_text(line_text),
-                                line_x, cy, base_font_size=font_size, line_spacing=56)
+                _render_rich_line(base, t, line_segs, line_x, cy,
+                                base_font_size=font_size)
         else:
-            # 默认渲染：逐段
-            line_segs, remaining = [], len(line_text)
-            seg_idx = 0
-            # 重新解析这行
-            line_segs = parse_rich_text(line_text)
             _render_rich_line(base, t, line_segs, line_x, cy,
-                            base_font_size=font_size, line_spacing=56)
+                            base_font_size=font_size)
 
-        cy += max(56, int(font_size * 1.2))
-    return cy + 12
+        cy += max(_s(56), int(font_size * 1.2))
+    return cy + _s(12)
 
 
-def _render_rich_subtitle(draw, base, t, rich_subtitle, y_start, huazi=None, font_family=None, font_size=26):
+def _render_rich_subtitle(draw, base, t, rich_subtitle, y_start, huazi=None, font_family=None, font_size=None, align="left"):
     """渲染副标题（v4.0: 支持花字）"""
-    all_segments = parse_rich_text(rich_subtitle)
-    if not all_segments:
+    if font_size is None:
+        font_size = _SUBTITLE_SIZE
+    if not rich_subtitle:
         return y_start
-    total_text = "".join(s[0] for s in all_segments)
-    wrapped_lines = textwrap.wrap(total_text, width=15)
-    lines, char_idx = [], 0
-    for line_text in wrapped_lines:
-        line_segs, remaining = [], len(line_text)
-        while remaining > 0 and char_idx < len(all_segments):
-            seg_text, seg_style = all_segments[char_idx]
-            if len(seg_text) <= remaining:
-                line_segs.append((seg_text, seg_style))
-                remaining -= len(seg_text); char_idx += 1
-            else:
-                line_segs.append((seg_text[:remaining], seg_style))
-                all_segments[char_idx] = (seg_text[remaining:], seg_style)
-                remaining = 0
-        if line_segs:
-            lines.append(line_segs)
+
+    # ★ v4.3: 按 \n 拆分，每行独立 parse + textwrap
+    raw_lines = rich_subtitle.split('\n')
+    all_rendered_lines = []
+    for raw_line in raw_lines:
+        if not raw_line.strip():
+            continue
+        segs = parse_rich_text(raw_line)
+        line_text = ''.join(s[0] for s in segs)
+        wrapped = textwrap.wrap(line_text, width=15) if line_text else ['']
+        seg_idx = 0
+        for wline in wrapped:
+            wsegs, rem = [], len(wline)
+            while rem > 0 and seg_idx < len(segs):
+                st, ss = segs[seg_idx]
+                if len(st) <= rem:
+                    wsegs.append((st, ss)); rem -= len(st); seg_idx += 1
+                else:
+                    wsegs.append((st[:rem], ss)); segs[seg_idx] = (st[rem:], ss); rem = 0
+            if wsegs:
+                all_rendered_lines.append((wline, wsegs))
     cy = y_start
 
     effective_huazi = huazi or _HUAZI_SUBTITLE
 
-    for line_text in wrapped_lines:
-        line_x = 28
+    for line_text, line_segs in all_rendered_lines:
+        if not line_text.strip():
+            continue
+        tw_line = _text_size(line_text, _font(font_size))[0]  # 不用 family，与花字一致
+        if align == "center":
+            line_x = (base.width - tw_line) // 2
+        else:
+            line_x = _s(28)
 
         if effective_huazi and HUAZI_TEMPLATES.get(effective_huazi):
             try:
@@ -805,15 +868,14 @@ def _render_rich_subtitle(draw, base, t, rich_subtitle, y_start, huazi=None, fon
                          accent_color=t.get("text_secondary"),
                          bg_color=t.get("bg_color"))
             except Exception:
-                _render_rich_line(base, t, parse_rich_text(line_text),
-                                line_x, cy, base_font_size=font_size, line_spacing=36)
+                _render_rich_line(base, t, line_segs, line_x, cy,
+                                base_font_size=font_size)
         else:
-            line_segs = parse_rich_text(line_text)
             _render_rich_line(base, t, line_segs, line_x, cy,
-                            base_font_size=font_size, line_spacing=36)
+                            base_font_size=font_size)
 
-        cy += max(36, int(font_size * 1.4))
-    return cy + 10
+        cy += max(_s(36), int(font_size * 1.4))
+    return cy + _s(10)
 
 
 # ============================================================
@@ -844,11 +906,13 @@ def _draw_accent_bar(draw, t, x, y, w, h=4):
     draw.rectangle([x, y, x + w, y + h], fill=t["accent"])
 
 
-def _draw_rotated_badge(base, t, text, x, y, font_size=18, rotation=-15, huazi=None, font_family=None):
+def _draw_rotated_badge(base, t, text, x, y, font_size=None, rotation=-15, huazi=None, font_family=None):
+    if font_size is None:
+        font_size = _s(18)
     font = _font(font_size, bold=True, family=font_family)
     bbox = ImageDraw.Draw(Image.new("RGBA", (1, 1))).textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    pad = 12
+    pad = _s(12)
     badge = Image.new("RGBA", (tw + pad * 4, th + pad * 4), (0, 0, 0, 0))
     bd = ImageDraw.Draw(badge)
 
@@ -863,11 +927,11 @@ def _draw_rotated_badge(base, t, text, x, y, font_size=18, rotation=-15, huazi=N
                      bg_color=t["accent"])
         except Exception:
             bd.rounded_rectangle([pad, pad, tw + pad * 3, th + pad * 3],
-                                 radius=8, fill=t["accent"])
+                                 radius=_s(8), fill=t["accent"])
             bd.text((pad * 2, pad * 2), text, fill=(255, 255, 255), font=font)
     else:
         bd.rounded_rectangle([pad, pad, tw + pad * 3, th + pad * 3],
-                             radius=8, fill=t["accent"])
+                             radius=_s(8), fill=t["accent"])
         bd.text((pad * 2, pad * 2), text, fill=(255, 255, 255), font=font)
 
     rotated = badge.rotate(rotation, expand=True, resample=Image.BICUBIC,
@@ -912,7 +976,7 @@ def _add_product_shadow(base, product, pos, alpha_mask, t, shadow_opacity=120):
 
 def _add_product_backlight(base, product, pos, alpha_mask, t, intensity=80):
     pw, ph = product.size
-    dr = max(3, max(pw, ph) // 60)
+    dr = max(_s(3), max(pw, ph) // 60)
     dilated = alpha_mask.filter(ImageFilter.MaxFilter(dr * 2 + 1))
     blur_r = max(pw, ph) // 25
     bl1 = dilated.filter(ImageFilter.GaussianBlur(blur_r))
@@ -952,18 +1016,18 @@ def _add_product_reflection(base, product, pos, alpha_mask):
 
 
 def _product_label(draw, base, t, text, x, y):
-    font = _font(15)
+    font = _font(_s(15))
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    pad = 6
+    pad = _s(6)
     draw.rounded_rectangle([x - pad, y - pad, x + tw + pad, y + th + pad],
-                           radius=4, fill=t["accent"])
+                           radius=_s(4), fill=t["accent"])
     draw.text((x, y), text, fill=(255, 255, 255), font=font)
-    dot_r = 3
-    draw.ellipse([x - dot_r + tw // 2, y - 15,
-                  x + dot_r + tw // 2, y - 15 + dot_r * 2], fill=t["accent"])
-    draw.line([(x + tw // 2, y - 15 + dot_r * 2),
-               (x + tw // 2, y - pad)], fill=t["accent"], width=1)
+    dot_r = _s(3)
+    draw.ellipse([x - dot_r + tw // 2, y - _s(15),
+                  x + dot_r + tw // 2, y - _s(15) + dot_r * 2], fill=t["accent"])
+    draw.line([(x + tw // 2, y - _s(15) + dot_r * 2),
+               (x + tw // 2, y - pad)], fill=t["accent"], width=_s(1))
 
 
 def _resize_product(product, target_w, target_h):
@@ -1007,17 +1071,17 @@ def _place_single_product(base, t, image_path, position, glow_mode, reflection, 
     rw, rh, align, tr = cfg
     tw, th = int(w * rw), int(h * rh)
     if align == "center":   x0 = (w - tw) // 2
-    elif align == "left":   x0 = 20
-    else:                   x0 = w - tw - 20
+    elif align == "left":   x0 = _s(20)
+    else:                   x0 = w - tw - _s(20)
     y0 = int(h * tr)
 
-    # text-above 模式下，如果文字内容较多，动态下移图片
-    if cover_layout == "text-above" and text_bottom > 0 and y0 < text_bottom + 12:
-        y0 = text_bottom + 12
+    # text-above 模式下，图片紧跟文字底部，不等固定比例
+    if cover_layout == "text-above" and text_bottom > 0:
+        y0 = text_bottom + _s(12)
         # 如果超出画布，缩小图片高度
-        available_h = h - y0 - 60  # 留60px给底部标签等
+        available_h = h - y0 - _s(60)  # 留60px给底部标签等
         if available_h < th:
-            th = max(int(h * 0.18), available_h)
+            th = max(int(h * 0.15), available_h)
 
     # 统一执行 alpha 提取 + 裁切
     alpha_mask = _extract_alpha_mask(product)
@@ -1071,18 +1135,19 @@ def _place_multi_products(base, t, image_paths, layout, glow_mode, labels,
 
         # ---- 位置计算 ----
         if placement == "bottom" or y_offset > 0:
-            # 下移模式：将 slot Y 从上方翻转到下方
+            # 下移模式：整体平移，保持 slot 间相对位置
             if placement == "bottom" and y_offset <= 0:
-                # 无具体 y_offset，使用默认下半区
-                new_sy = sy + 0.44  # 下移 44% 画布高度
+                # 无具体 y_offset，整体下移 44%
+                shift = 0.44
             else:
-                # 有 y_offset：基于文字结束位置计算
-                new_sy = max(sy + 0.44, y_offset / h + 0.02)
+                # 有 y_offset：第一个 slot 移到 y_offset，其余保持相对间距
+                first_sy = slots[0][1]
+                shift = y_offset / h + 0.02 - first_sy
+            new_sy = sy + shift
 
             # 确保不超出画布
-            effective_bottom = (max_y or (h - 60)) / h
+            effective_bottom = (max_y or (h - _s(60))) / h
             if new_sy + sh > effective_bottom:
-                # 向下挤压高度
                 sh = max(0.15, effective_bottom - new_sy - 0.02)
 
             sy = new_sy
@@ -1115,65 +1180,65 @@ def _place_multi_products(base, t, image_paths, layout, glow_mode, labels,
 # ============================================================
 
 def _render_accent_line(draw, base, t, text, y_start):
-    font_a = _font(16)
-    _draw_accent_bar(draw, t, 28, y_start + 8, 70, 4)
+    font_a = _font(_s(16))
+    _draw_accent_bar(draw, t, _s(28), y_start + _s(8), _s(70), 4)
     if text:
         segs = parse_rich_text(text)
-        _render_rich_line(base, t, segs, 110, y_start, base_font_size=16, line_spacing=20)
-    return y_start + 28
+        _render_rich_line(base, t, segs, _s(110), y_start, base_font_size=_s(16))
+    return y_start + _s(28)
 
 
 def _render_specs_bar(draw, base, t, specs, y_start, huazi_val=None, font_family=None):
     w, _ = CANVAS_SIZE
-    f_label, f_value = _font(14, family=font_family), _font(30, bold=True, family=font_family)
+    f_label, f_value = _font(_s(14), family=font_family), _font(_s(30), bold=True, family=font_family)
     n = len(specs)
     if n == 0:
         return y_start
-    bar_w, bar_h = w - 56, 82
-    item_w, x0 = bar_w // n, 28
+    bar_w, bar_h = w - _s(56), _s(82)
+    item_w, x0 = bar_w // n, _s(28)
     draw.rounded_rectangle([x0, y_start, x0 + bar_w, y_start + bar_h],
-                           radius=8, fill=t["bg_accent"], outline=t["divider"], width=1)
+                           radius=_s(8), fill=t["bg_accent"], outline=t["divider"], width=_s(1))
     for i, spec in enumerate(specs):
         cx = x0 + i * item_w + item_w // 2
         label = spec.get("label", "")
         if label:
-            draw.text((cx, y_start + 8), label, fill=t["text_secondary"], font=f_label, anchor="mt")
+            draw.text((cx, y_start + _s(8)), label, fill=t["text_secondary"], font=f_label, anchor="mt")
         val = str(spec.get("value", ""))
 
         val_huazi = huazi_val or _HUAZI_SPECS_VAL
         if i == 0 and val_huazi and HUAZI_TEMPLATES.get(val_huazi):
-            tw_val = _text_size(val, _font(30, bold=True, family=font_family))[0]
+            tw_val = _text_size(val, _font(_s(30), bold=True, family=font_family))[0]
             try:
                 hr = get_huazi_renderer()
                 hr.render(base, val, val_huazi,
-                         cx - tw_val // 2, y_start + 32,
+                         cx - tw_val // 2, y_start + _s(32),
                          font_family=font_family or _FONT_FAMILY,
-                         font_weight="Bold", font_size=30,
+                         font_weight="Bold", font_size=_s(30),
                          accent_color=t.get("accent_alt"),
                          bg_color=t.get("bg_color"))
             except Exception:
                 fg = t["accent_alt"]
-                _render_text_glow(base, (cx - _text_size(val, f_value)[0] // 2, y_start + 32),
-                                val, f_value, fg, (*fg, 120), glow_radius=6)
+                _render_text_glow(base, (cx - _text_size(val, f_value)[0] // 2, y_start + _s(32)),
+                                val, f_value, fg, (*fg, 120), glow_radius=_s(6))
         elif i == 0:
             fg = t["accent_alt"]
-            _render_text_glow(base, (cx - _text_size(val, f_value)[0] // 2, y_start + 32),
-                            val, f_value, fg, (*fg, 120), glow_radius=6)
+            _render_text_glow(base, (cx - _text_size(val, f_value)[0] // 2, y_start + _s(32)),
+                            val, f_value, fg, (*fg, 120), glow_radius=_s(6))
         else:
-            draw.text((cx, y_start + 38), val, fill=t["text_primary"], font=f_value, anchor="mt")
+            draw.text((cx, y_start + _s(38)), val, fill=t["text_primary"], font=f_value, anchor="mt")
         if i < n - 1:
             sx = x0 + (i + 1) * item_w
-            draw.line([(sx, y_start + 12), (sx, y_start + bar_h - 12)], fill=t["divider"], width=1)
-    return y_start + bar_h + 16
+            draw.line([(sx, y_start + _s(12)), (sx, y_start + bar_h - _s(12))], fill=t["divider"], width=_s(1))
+    return y_start + bar_h + _s(16)
 
 
 def _render_tags(draw, base, t, tags, y_start, huazi=None, font_family=None):
-    f_tag = _font(17, family=font_family)
-    x, th = 28, 34
+    f_tag = _font(_s(17), family=font_family)
+    x, th = _s(28), _s(34)
     tag_huazi = huazi or _HUAZI_TAGS
     for i, tag_text in enumerate(tags):
         bbox = draw.textbbox((0, 0), tag_text, font=f_tag)
-        tw = bbox[2] - bbox[0] + 22
+        tw = bbox[2] - bbox[0] + _s(22)
         if i == 0:
             bg, fg, outline = t["accent"], (255, 255, 255), None
         else:
@@ -1182,37 +1247,37 @@ def _render_tags(draw, base, t, tags, y_start, huazi=None, font_family=None):
         if i == 0 and tag_huazi and HUAZI_TEMPLATES.get(tag_huazi):
             # 第一个标签用花字
             draw.rounded_rectangle([x, y_start, x + tw, y_start + th],
-                                   radius=7, fill=bg, outline=outline, width=1 if outline else 0)
+                                   radius=_s(7), fill=bg, outline=outline, width=_s(1) if outline else 0)
             try:
                 hr = get_huazi_renderer()
-                hr.render(base, tag_text, tag_huazi, x + 11, y_start + 5,
+                hr.render(base, tag_text, tag_huazi, x + _s(11), y_start + _s(5),
                          font_family=font_family or _FONT_FAMILY,
-                         font_weight="Bold", font_size=17,
+                         font_weight="Bold", font_size=_s(17),
                          accent_color=fg, bg_color=bg)
             except Exception:
-                draw.text((x + 11, y_start + 5), tag_text, fill=fg, font=f_tag)
+                draw.text((x + _s(11), y_start + _s(5)), tag_text, fill=fg, font=f_tag)
         else:
             draw.rounded_rectangle([x, y_start, x + tw, y_start + th],
-                                   radius=7, fill=bg, outline=outline, width=1 if outline else 0)
-            draw.text((x + 11, y_start + 5), tag_text, fill=fg, font=f_tag)
-        x += tw + 10
-        if x > CANVAS_SIZE[0] - 60:
+                                   radius=_s(7), fill=bg, outline=outline, width=_s(1) if outline else 0)
+            draw.text((x + _s(11), y_start + _s(5)), tag_text, fill=fg, font=f_tag)
+        x += tw + _s(10)
+        if x > CANVAS_SIZE[0] - _s(60):
             break
-    return y_start + 48
+    return y_start + _s(48)
 
 
 def _render_price_badge(draw, base, t, price_text, x, y, huazi=None, font_family=None):
-    f = _font(36, bold=True, family=font_family)
+    f = _font(_s(36), bold=True, family=font_family)
     bbox = draw.textbbox((0, 0), price_text, font=f)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    pad = 16
+    pad = _s(16)
     glow = Image.new("RGBA", (tw + pad * 4, th + pad * 4), (0, 0, 0, 0))
     ImageDraw.Draw(glow).rounded_rectangle([pad, pad, tw + pad * 3, th + pad * 3],
-                                           radius=12, fill=t["accent"])
-    glow = glow.filter(ImageFilter.GaussianBlur(4))
+                                           radius=_s(12), fill=t["accent"])
+    glow = glow.filter(ImageFilter.GaussianBlur(_s(4)))
     base.paste(glow, (x - pad - pad, y - pad - pad), glow)
     draw.rounded_rectangle([x - pad, y - pad, x + tw + pad, y + th + pad],
-                           radius=12, fill=t["accent"])
+                           radius=_s(12), fill=t["accent"])
 
     price_huazi = huazi or _HUAZI_PRICE
     if price_huazi and HUAZI_TEMPLATES.get(price_huazi):
@@ -1220,7 +1285,7 @@ def _render_price_badge(draw, base, t, price_text, x, y, huazi=None, font_family
             hr = get_huazi_renderer()
             hr.render(base, price_text, price_huazi, x, y,
                      font_family=font_family or _FONT_FAMILY,
-                     font_weight="Bold", font_size=36,
+                     font_weight="Bold", font_size=_s(36),
                      accent_color=(255, 255, 255),
                      bg_color=t["accent"])
         except Exception:
@@ -1231,14 +1296,14 @@ def _render_price_badge(draw, base, t, price_text, x, y, huazi=None, font_family
 
 def _render_watermark_line(draw, t):
     w, h = CANVAS_SIZE
-    f = _font(11)
-    draw.line([(24, h - 42), (w - 24, h - 42)], fill=t["divider"], width=1)
-    draw.text((30, h - 34), "@CREATOR", fill=t["text_secondary"], font=f)
+    f = _font(_s(11))
+    draw.line([(_s(24), h - _s(42)), (w - _s(24), h - _s(42))], fill=t["divider"], width=_s(1))
+    draw.text((_s(30), h - _s(34)), "@CREATOR", fill=t["text_secondary"], font=f)
 
 
 def _render_frame(draw, t):
     w, h = CANVAS_SIZE
-    draw.rectangle([1, 1, w - 2, h - 2], outline=t["divider"], width=1)
+    draw.rectangle([_s(1), _s(1), w - _s(2), h - _s(2)], outline=t["divider"], width=_s(1))
 
 
 # ============================================================
@@ -1273,8 +1338,8 @@ def generate_cover(
     badge_huazi=None,
     tags_huazi=None,
     specs_huazi=None,
-    title_size=46,
-    subtitle_size=26,
+    title_size=None,
+    subtitle_size=None,
 ):
     """
     cover_layout 模式:
@@ -1294,6 +1359,25 @@ def generate_cover(
     _FONT_FAMILY = font_family
     _FONT_WEIGHT_TITLE = font_weight_title
     _FONT_WEIGHT_BODY = font_weight_body
+
+    # ★ v5.1: 自动计算标题字号（垂直+水平双约束）
+    if title_size is None:
+        raw = title or ''
+        title_lines = max(1, len(raw.split('\n')))
+        # 垂直约束：文字区 44% 画布高 / (行数 × 1.25)
+        avail_h = int(CANVAS_SIZE[1] * 0.44)
+        size_by_h = avail_h // (title_lines * 1.25)
+        # 水平约束：最长行字数不超画布 85% 宽
+        stripped = raw
+        for ch in '*_=!~`': stripped = stripped.replace(ch, '')
+        longest = max((len(l) for l in stripped.split('\n')), default=1)
+        avail_w = int(CANVAS_SIZE[0] * 0.85)
+        size_by_w = avail_w // max(1, longest) if longest > 0 else avail_w
+        title_size = int(min(size_by_h, size_by_w))
+        title_size = max(120, min(320, title_size))
+    if subtitle_size is None:
+        subtitle_size = int(title_size * 0.55)
+
     _TITLE_SIZE = title_size
     _SUBTITLE_SIZE = subtitle_size
     # 花字：如果没指定则自动匹配模板
@@ -1332,28 +1416,33 @@ def generate_cover(
 
     # ======== 1. 背景装饰 ========
     if t.get("is_dark", True):
-        _draw_glow_orb(draw, base, t, w - 50, 70, 190)
-        _draw_deco_ring(draw, base, t, w - 45, 45, 55)
+        _draw_glow_orb(draw, base, t, w - _s(50), _s(70), _s(190))
+        _draw_deco_ring(draw, base, t, w - _s(45), _s(45), _s(55))
     else:
-        _draw_glow_orb(draw, base, t, w - 40, 50, 150)
-    _draw_accent_bar(draw, t, 24, 16, 50, 3)
+        _draw_glow_orb(draw, base, t, w - _s(40), _s(50), _s(150))
+    _draw_accent_bar(draw, t, _s(24), _s(16), _s(50), 3)
 
     if corner_badge:
-        _draw_rotated_badge(base, t, corner_badge, w - 50, 55, font_size=14, rotation=-15)
+        _draw_rotated_badge(base, t, corner_badge, w - _s(50), _s(55), rotation=-15)
 
     # ================================================================
     # ★ 布局分发
     # ================================================================
 
-    if cover_layout == "image-above":
-        # ---- 旧布局（兼容）：图片在上 → 文字在下 ----
+    if cover_layout == "full-bg":
+        # ---- 满铺背景：文字垂直居中于全画布 ----
+        _layout_full_bg(base, draw, t, w, h,
+                        image_paths, has_multi, image_layout, image_position,
+                        image_glow, image_reflection, image_labels,
+                        title, subtitle, specs, tags, price_text, accent_line_text)
+
+    elif cover_layout == "image-above":
         _layout_image_above(base, draw, t, w, h,
                             image_paths, has_multi, image_layout, image_position,
                             image_glow, image_reflection, image_labels,
                             title, subtitle, specs, tags, price_text, accent_line_text)
 
     elif cover_layout == "text-surround":
-        # ---- 文字上下包裹：标题在上 → 图片在中 → 剩余文字在下 ----
         _layout_text_surround(base, draw, t, w, h,
                               image_paths, has_multi, image_layout, image_position,
                               image_glow, image_reflection, image_labels,
@@ -1366,7 +1455,7 @@ def generate_cover(
                            image_glow, image_reflection, image_labels,
                            title, subtitle, specs, tags, price_text, accent_line_text)
 
-    _render_watermark_line(draw, t)
+    # _render_watermark_line(draw, t)  # v4.1: 移除硬编码 @CREATOR 水印
     _render_frame(draw, t)
 
     final = base.convert("RGB")
@@ -1382,148 +1471,151 @@ def generate_cover(
 # 布局子函数
 # ============================================================
 
+def _layout_full_bg(base, draw, t, w, h,
+                     image_paths, has_multi, image_layout, image_position,
+                     image_glow, image_reflection, image_labels,
+                     title, subtitle, specs, tags, price_text, accent_line_text):
+    """★ v5.1 满铺背景：文字垂直居中于全画布"""
+    MARGIN = int(h * 0.05)
+
+    # 先测量文字总高度
+    tmp = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    tmp_draw = ImageDraw.Draw(tmp)
+    tmp_cy = 0
+    if title:
+        tmp_cy = _render_rich_title(tmp_draw, tmp, t, title, tmp_cy, align="center")
+    if subtitle:
+        tmp_cy = _render_rich_subtitle(tmp_draw, tmp, t, subtitle, tmp_cy, align="center")
+    text_h = tmp_cy
+
+    # 垂直居中
+    cy = (h - text_h) // 2
+    if cy < MARGIN:
+        cy = MARGIN
+    if title:
+        cy = _render_rich_title(draw, base, t, title, cy, align="center")
+    if subtitle:
+        cy = _render_rich_subtitle(draw, base, t, subtitle, cy, align="center")
+
+
 def _layout_image_above(base, draw, t, w, h,
                         image_paths, has_multi, image_layout, image_position,
                         image_glow, image_reflection, image_labels,
                         title, subtitle, specs, tags, price_text, accent_line_text):
-    """旧布局：图片在上 → 文字在下（向后兼容）"""
-    image_box = None
-    # 向后兼容：image-above 模式下自动将 bottom-* 位置转为 top-*
-    pos = image_position
-    if pos.startswith("bottom-"):
-        pos = "top-" + pos[7:]  # bottom-center → top-center, bottom-left → top-left 等
-    elif pos in ("full-bg", "mid-left", "mid-right", "bottom-fill"):
-        pos = "top-center"
+    """★ v5.0 图片在上一半 → 文字在下一半，纯比例驱动"""
+    HALF = int(h * 0.50)
+    MARGIN = int(h * 0.03)
+
+    # ---- 上半：图片 ----
     if image_paths:
         if has_multi:
-            image_box = _place_multi_products(base, t, image_paths, image_layout, image_glow, image_labels)
+            _place_multi_products(base, t, image_paths, image_layout, image_glow, image_labels,
+                                  y_offset=MARGIN, max_y=HALF - MARGIN)
         else:
-            image_box = _place_single_product(base, t, image_paths[0], pos, image_glow,
-                                              image_reflection, image_labels[0] if image_labels else None,
-                                              cover_layout="image-above")
+            # 图片填满上半区 (MARGIN, MARGIN) ~ (w-MARGIN, HALF-MARGIN)
+            _place_single_product(base, t, image_paths[0], "top-center", image_glow,
+                                  image_reflection, image_labels[0] if image_labels else None,
+                                  cover_layout="image-above")
 
-    hero_bottom = image_box[3] + 14 if image_box else int(h * 0.10)
-    cy = hero_bottom + 18
+    # ---- 下半：文字（居中）----
+    cy = HALF + MARGIN
     if title:
-        cy = _render_rich_title(draw, base, t, title, cy)
-    if accent_line_text:
-        cy = _render_accent_line(draw, base, t, accent_line_text, cy)
-    else:
-        cy += 10
+        cy = _render_rich_title(draw, base, t, title, cy, align="center")
     if subtitle:
-        cy = _render_rich_subtitle(draw, base, t, subtitle, cy)
-    cy += 8
-    if specs and len(specs) > 0:
-        cy = _render_specs_bar(draw, base, t, specs, cy)
-    if price_text:
-        _render_price_badge(draw, base, t, price_text, w - 155, h - 155)
+        cy = _render_rich_subtitle(draw, base, t, subtitle, cy, align="center")
     if tags and len(tags) > 0:
-        _render_tags(draw, base, t, tags, cy)
+        _render_tags(draw, base, t, tags, h - MARGIN - int(h * 0.04))
 
 
 def _layout_text_above(base, draw, t, w, h,
                        image_paths, has_multi, image_layout, image_position,
                        image_glow, image_reflection, image_labels,
                        title, subtitle, specs, tags, price_text, accent_line_text):
-    """★ 新默认布局：文字在上方 → 图片在下方（匹配 5/6 爆款封面）"""
-    # ---- 第一步：文字从顶部开始渲染 ----
-    cy = 28  # 起始 Y（留出顶部强调色条的空间）
-    has_image = bool(image_paths)
+    """★ v5.0 文字上一半 → 图片下一半，纯比例驱动"""
+    HALF = int(h * 0.50)
+    MARGIN = int(h * 0.03)
 
+    # ---- 上半：文字（居中）----
+    cy = MARGIN
     if title:
-        cy = _render_rich_title(draw, base, t, title, cy)
-    if accent_line_text:
-        cy = _render_accent_line(draw, base, t, accent_line_text, cy)
-    else:
-        cy += 10
+        cy = _render_rich_title(draw, base, t, title, cy, align="center")
     if subtitle:
-        cy = _render_rich_subtitle(draw, base, t, subtitle, cy)
-    cy += 6
-    if specs and len(specs) > 0:
-        cy = _render_specs_bar(draw, base, t, specs, cy)
+        cy = _render_rich_subtitle(draw, base, t, subtitle, cy, align="center")
 
-    # 记录文字区域结束位置
-    text_bottom = cy + 8
-
-    # ---- 第二步：在文字下方放置图片 ----
-    image_box = None
+    # ---- 下半：图片 ----
     if image_paths:
-        # 为图片腾出下部空间 —— 图片起始于文字结束 + 间距
-        img_start_y = text_bottom + 12
-        img_max_y = h - 120  # 给底部标签留空间
-
+        img_start = max(HALF + MARGIN, cy + MARGIN)  # 确保不重叠
         if has_multi:
-            # 下移多图布局：placement="bottom" 自动翻转到下半区
-            image_box = _place_multi_products(base, t, image_paths,
-                                              image_layout, image_glow, image_labels,
-                                              y_offset=img_start_y, max_y=img_max_y,
-                                              placement="bottom")
+            _place_multi_products(base, t, image_paths, image_layout, image_glow, image_labels,
+                                  y_offset=img_start, max_y=h - MARGIN, placement="bottom")
         else:
-            # 单图：text-above 模式下自动将非 bottom 位置转为 bottom
-            img_pos = image_position
-            if img_pos.startswith("top-"):
-                img_pos = img_pos.replace("top-", "bottom-")
-            elif img_pos in ("center", "mid-left", "mid-right"):
-                img_pos = "bottom-center"
-            elif img_pos == "full-bg":
-                img_pos = "bottom-fill"
-            image_box = _place_single_product(base, t, image_paths[0], img_pos, image_glow,
-                                              image_reflection, image_labels[0] if image_labels else None,
-                                              cover_layout="text-above", text_bottom=img_start_y)
-        if image_box:
-            text_bottom = image_box[3] + 8
+            _place_single_product(base, t, image_paths[0], "bottom-center", image_glow,
+                                  image_reflection, image_labels[0] if image_labels else None,
+                                  cover_layout="text-above", text_bottom=img_start)
 
-    # ---- 第三步：底部标签和价格 ----
-    if price_text:
-        _render_price_badge(draw, base, t, price_text, w - 155, h - 155)
     if tags and len(tags) > 0:
-        _render_tags(draw, base, t, tags, text_bottom + 8)
+        _render_tags(draw, base, t, tags, h - MARGIN - int(h * 0.04))
 
 
 def _layout_text_surround(base, draw, t, w, h,
                           image_paths, has_multi, image_layout, image_position,
                           image_glow, image_reflection, image_labels,
                           title, subtitle, specs, tags, price_text, accent_line_text):
-    """文字上下包裹：标题在上 → 图片在中 → 规格/标签在下"""
-    has_image = bool(image_paths)
+    """★ v5.1 文字上下包裹：上文字 | 等距 | 图片 | 等距 | 下文字"""
+    title_lines = title.split('\n') if title else []
+    title_top = title_lines[0] if len(title_lines) > 0 else ''
+    title_bottom = title_lines[1] if len(title_lines) > 1 else ''
 
-    # ---- 第一步：标题 + 副标题从顶部开始 ----
-    cy = 28
-    if title:
-        cy = _render_rich_title(draw, base, t, title, cy)
-    if accent_line_text:
-        cy = _render_accent_line(draw, base, t, accent_line_text, cy)
+    MARGIN = int(h * 0.05)  # 5% 补偿光晕/花字扩展
 
-    top_text_end = cy + 8
+    # ---- 上区：顶部标题 ----
+    cy = MARGIN
+    if title_top:
+        cy = _render_rich_title(draw, base, t, title_top, cy, align="center")
+    top_end = cy
 
-    # ---- 第二步：图片在中央区域 ----
+    # ---- 下区文字预测量 ----
+    tmp = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    tmp_draw = ImageDraw.Draw(tmp)
+    bot_h = 0
+    if title_bottom:
+        bot_h = _render_rich_title(tmp_draw, tmp, t, title_bottom, 0, align="center")
+
+    # ---- 中区：图片在上下文字之间，等距 ----
+    img_start = top_end + MARGIN
+    img_end = h - bot_h - MARGIN
     image_box = None
-    if image_paths:
-        img_start_y = top_text_end + 12
-        # 图片占据中间约 35-40% 的空间
-        img_max_y = h - 200  # 预留底部文字空间
-
+    if image_paths and img_end > img_start:
         if has_multi:
-            image_box = _place_multi_products(base, t, image_paths,
-                                              image_layout, image_glow, image_labels,
-                                              y_offset=img_start_y, max_y=img_max_y)
+            image_box = _place_multi_products(base, t, image_paths, image_layout, image_glow, image_labels,
+                                              y_offset=img_start, max_y=img_end)
         else:
-            # 使用中部位置
-            image_box = _place_single_product(base, t, image_paths[0], "center", image_glow,
-                                              image_reflection, image_labels[0] if image_labels else None,
-                                              cover_layout="text-surround")
+            product = Image.open(image_paths[0]).convert("RGBA")
+            pw, ph = product.size
+            # 图片最多占可用空间的 65%，留呼吸感
+            avail_w = (w - MARGIN * 2) * 0.65
+            avail_h = (img_end - img_start) * 0.65
+            if pw > 0 and ph > 0 and avail_h > 0:
+                scale = min(avail_w / pw, avail_h / ph)
+                nw, nh = int(pw * scale), int(ph * scale)
+                product = product.resize((nw, nh), Image.LANCZOS)
+                x0 = (w - nw) // 2
+                y0 = img_start  # 贴顶：gap1=MARGIN, gap2=img_bottom+MARGIN
+                alpha_mask = _extract_alpha_mask(product)
+                if image_glow in ("backlight", "both"):
+                    _add_product_backlight(base, product, (x0, y0), alpha_mask, t)
+                if image_glow in ("shadow", "both"):
+                    _add_product_shadow(base, product, (x0, y0), alpha_mask, t)
+                base.paste(product, (x0, y0), alpha_mask if product.mode == 'RGBA' else None)
+                image_box = (x0, y0, x0 + nw, y0 + nh)
 
-    # ---- 第三步：图片下方继续文字 ----
-    cy2 = (image_box[3] + 16) if image_box else top_text_end + 30
-    if subtitle:
-        cy2 = _render_rich_subtitle(draw, base, t, subtitle, cy2)
-    cy2 += 8
-    if specs and len(specs) > 0:
-        cy2 = _render_specs_bar(draw, base, t, specs, cy2)
-    if price_text:
-        _render_price_badge(draw, base, t, price_text, w - 155, h - 155)
+    # ---- 下区：底部标题（图片实际底部 + MARGIN）----
+    img_bottom = image_box[3] if image_box else img_end
+    bot_start = img_bottom + MARGIN + int(h * 0.03)  # +3% 补偿阴影向下延伸
+    if title_bottom:
+        _render_rich_title(draw, base, t, title_bottom, bot_start, align="center")
     if tags and len(tags) > 0:
-        _render_tags(draw, base, t, tags, cy2)
+        _render_tags(draw, base, t, tags, h - MARGIN - int(h * 0.04))
 
 
 # ============================================================
@@ -1615,10 +1707,10 @@ def main():
                         help="标题字重 (default: Bold)")
     parser.add_argument("--font-weight-body", default="Regular",
                         help="正文字重 (default: Regular)")
-    parser.add_argument("--title-size", type=int, default=46,
-                        help="标题字号 (default: 46)")
-    parser.add_argument("--subtitle-size", type=int, default=26,
-                        help="副标题字号 (default: 26)")
+    parser.add_argument("--title-size", type=int, default=None,
+                        help="标题字号 (default: 自动计算)")
+    parser.add_argument("--subtitle-size", type=int, default=None,
+                        help="副标题字号 (default: 自动计算)")
 
     # ★ v4.0: 花字
     parser.add_argument("--list-fonts", action="store_true",

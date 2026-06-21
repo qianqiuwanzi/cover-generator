@@ -1,11 +1,11 @@
 ---
 name: cover-generator
-description: Generate Douyin viral-style video covers (540x720, 3:4 portrait) for any content category — tech, education, food, travel, fashion, business. Based on pixel-level analysis of 6 real viral covers. Supports rich text markup, multi-image layouts, product glow/shadow/reflection effects. Use when asked to create a Douyin cover for any content type.
+description: Generate Douyin viral-style video covers (1200x1600, 3:4 portrait) for any content category — tech, education, food, travel, fashion, business. Based on pixel-level analysis of 6 real viral covers. Supports rich text markup, multi-image layouts, product glow/shadow/reflection effects. Use when asked to create a Douyin cover for any content type.
 ---
 
 # cover-generator — 多品类抖音爆款封面生成器 v3.1
 
-**一句话**：选品类 → 填文案 → 自动生成符合抖音爆款规律的竖屏封面（540×720）。
+**一句话**：选品类 → 填文案 → 自动生成符合抖音爆款规律的竖屏封面（1200×1600）。
 
 > 基于 6 张真实爆款封面的逐像素分析，提炼为跨品类设计公式 + **富文本引擎** + **多图光影引擎** + **6 品类模板系统**。详见 `references/cover-analysis.md`。
 
@@ -66,7 +66,7 @@ description: Generate Douyin viral-style video covers (540x720, 3:4 portrait) fo
 
 | 要素 | 规则 |
 |------|------|
-| **尺寸** | 540×720（3:4竖屏），填满整个空间 |
+| **尺寸** | 1200×1600（3:4竖屏），填满整个空间 |
 | **背景** | 暗底（60-80%画面）或暖亮底（20-40%画面），纯色/极简 |
 | **对比度** | 必须 HIGH（整体 std > 70），这是抓眼球的前提 |
 | **强调色** | ≤10% 画面，红/金/橙/青，饱和拉满 |
