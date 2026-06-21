@@ -1031,13 +1031,14 @@ def _product_label(draw, base, t, text, x, y):
 
 
 def _resize_product(product, target_w, target_h):
+    """缩放图片以完全适配目标区域（contain 模式，不裁剪）。
+    返回 (resized_image, new_w, new_h)，图片保持原始宽高比，不裁剪。
+    """
     pw, ph = product.size
-    scale = max(target_w / pw, target_h / ph)
+    scale = min(target_w / pw, target_h / ph)  # min = contain（不裁剪）
     nw, nh = int(pw * scale), int(ph * scale)
     product = product.resize((nw, nh), Image.LANCZOS)
-    cx = (nw - target_w) // 2 if nw > target_w else 0
-    cy = (nh - target_h) // 2 if nh > target_h else 0
-    return product.crop((cx, cy, cx + target_w, cy + target_h))
+    return product, nw, nh
 
 
 def _place_single_product(base, t, image_path, position, glow_mode, reflection, label,
@@ -1083,18 +1084,23 @@ def _place_single_product(base, t, image_path, position, glow_mode, reflection, 
         if available_h < th:
             th = max(int(h * 0.15), available_h)
 
-    # 统一执行 alpha 提取 + 裁切
+    # 统一执行 alpha 提取 + 缩放（contain 模式，不裁剪）
     alpha_mask = _extract_alpha_mask(product)
-    product = _resize_product(product, tw, th)
-    alpha_mask = _resize_product(alpha_mask.convert("RGBA"), tw, th).split()[0]
+    product, actual_w, actual_h = _resize_product(product, tw, th)
+    alpha_mask, _, _ = _resize_product(alpha_mask.convert("RGBA"), tw, th)
+    alpha_mask = alpha_mask.split()[0]
+
+    # 将实际图片居中放置在目标区域内（contain 模式下实际尺寸 ≤ 目标尺寸）
+    px = x0 + (tw - actual_w) // 2
+    py = y0 + (th - actual_h) // 2
 
     if glow_mode in ("backlight", "both"):
-        _add_product_backlight(base, product, (x0, y0), alpha_mask, t)
+        _add_product_backlight(base, product, (px, py), alpha_mask, t)
     if glow_mode in ("shadow", "both"):
-        _add_product_shadow(base, product, (x0, y0), alpha_mask, t)
-    base.paste(product, (x0, y0), alpha_mask)
+        _add_product_shadow(base, product, (px, py), alpha_mask, t)
+    base.paste(product, (px, py), alpha_mask)
     if reflection:
-        _add_product_reflection(base, product, (x0, y0), alpha_mask)
+        _add_product_reflection(base, product, (px, py), alpha_mask)
     if label:
         draw = ImageDraw.Draw(base)
         lx = x0 + tw // 2 - _text_size(label, _font(15))[0] // 2
@@ -1156,13 +1162,19 @@ def _place_multi_products(base, t, image_paths, layout, glow_mode, labels,
         x0, y0 = int(w * sx), int(h * sy)
 
         alpha_mask = _extract_alpha_mask(product)
-        product = _resize_product(product, tw, th)
-        alpha_mask = _resize_product(alpha_mask.convert("RGBA"), tw, th).split()[0]
+        product, actual_w, actual_h = _resize_product(product, tw, th)
+        alpha_mask, _, _ = _resize_product(alpha_mask.convert("RGBA"), tw, th)
+        alpha_mask = alpha_mask.split()[0]
+
+        # 将实际图片居中放置在目标区域内（contain 模式下实际尺寸 ≤ 目标尺寸）
+        px = x0 + (tw - actual_w) // 2
+        py = y0 + (th - actual_h) // 2
+
         if glow_mode in ("backlight", "both"):
-            _add_product_backlight(base, product, (x0, y0), alpha_mask, t, intensity=50)
+            _add_product_backlight(base, product, (px, py), alpha_mask, t, intensity=50)
         if glow_mode in ("shadow", "both"):
-            _add_product_shadow(base, product, (x0, y0), alpha_mask, t, shadow_opacity=80)
-        base.paste(product, (x0, y0), alpha_mask)
+            _add_product_shadow(base, product, (px, py), alpha_mask, t, shadow_opacity=80)
+        base.paste(product, (px, py), alpha_mask)
         if labels and i < len(labels) and labels[i]:
             draw = ImageDraw.Draw(base)
             label = labels[i]
