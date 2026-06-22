@@ -64,6 +64,112 @@ def _s(v):
     return int(v * SCALE)
 
 # ============================================================
+# ★ 语义智能分词换行 v5.3
+# ============================================================
+
+def semantic_split(text, max_lines=2):
+    """
+    按语义智能分词换行，确保：
+    1. 语义单元完整（"AI时代"不拆开，"建设"不拆开）
+    2. 两行字数尽量均衡（差值尽量小）
+    3. 语义单元完整性 > 字数均衡（宁可略不均衡，也要保持语义完整）
+    
+    返回: list[str] - 分好的行
+    """
+    if not text or len(text) <= 4:
+        return [text]
+    
+    # 语义分隔符 - 直接切分
+    for sep in ['|', '·', '—', '--', '｜']:
+        if sep in text:
+            parts = text.split(sep)
+            if len(parts) == 2:
+                p0, p1 = parts[0].strip(), parts[1].strip()
+                if p0 and p1:
+                    return [p0, p1]
+    
+    # 语义单元集合（用于识别边界）
+    semantic_units = [
+        'AI时代', '人工智能', '机器学习', '深度学习', '神经网络', '大模型',
+        '算力', '芯片', '数据中心', '云计算', '边缘计算', '物联网', '区块链',
+        '开始建设', '落地', '建成', '布局', '部署', '建设',
+        '2026年', '2025年', '2024年', '全国首台', '全球首个',
+        '年化收益', '资产配置', '风险管理', '财务自由',
+        '最重要的', '最关键的', '最核心的', '最实用的', '最简单的',
+        '的一张网', '的秘密', '的真相', '的方法', '的技巧', '的套路',
+        '设备落地', '最重要', '的一张',
+        # 国家/地区词（不独立拆开）
+        '中国', '全国', '全球',
+    ]
+    
+    # 找到所有语义单元的边界位置
+    unit_boundaries = set()  # 语义单元的起始索引集合
+    for unit in semantic_units:
+        start = 0
+        while True:
+            idx = text.find(unit, start)
+            if idx == -1:
+                break
+            unit_boundaries.add(idx)
+            unit_boundaries.add(idx + len(unit))
+            start = idx + 1
+    
+    # 预计算每个候选切分点的"语义纯度"
+    total_len = len(text)
+    
+    # DP: dp[i] = (score, split_point) 在位置i切分的最好score
+    # score越低越好 = 语义完整性奖励 - 字数不均衡惩罚
+    import math
+    
+    # 候选切分点：在语义边界处 OR 每4-8字间隔
+    candidates = set()
+    # 语义边界
+    for b in sorted(unit_boundaries):
+        if 2 <= b <= total_len - 2:
+            candidates.add(b)
+    # 均衡切分点（每6字一个候选）
+    step = max(4, min(8, total_len // 3))
+    for pos in range(2, total_len - 1, 2):
+        candidates.add(pos)
+    
+    # 尝试每个候选，找最均衡且在语义边界上的
+    best_split = None
+    best_score = float('inf')
+    
+    for i in sorted(candidates):
+        len1, len2 = i, total_len - i
+        if len1 < 2 or len2 < 2:
+            continue
+        
+        # 分数：字数差平方 + 语义惩罚
+        len_diff = abs(len1 - len2)
+        score = len_diff * len_diff
+        
+        # 语义评估：精确边界 > 附近边界 > 无边界
+        exact_boundary = i in unit_boundaries and 2 <= i <= total_len - 2
+        if exact_boundary:
+            score -= 10  # 精确语义边界奖励（如"AI时代"后断开，优先于字数均衡）
+        else:
+            near_boundary = any(abs(i - b) <= 1 for b in unit_boundaries if 1 <= b <= total_len - 1)
+            if not near_boundary:
+                score += 50  # 不在语义边界附近，大惩罚
+        
+        # 避免单字行
+        if len1 == 1 or len2 == 1:
+            score += 100
+        
+        if score < best_score:
+            best_score = score
+            best_split = i
+    
+    if best_split:
+        return [text[:best_split], text[best_split:]]
+    
+    # 兜底：均衡切分
+    mid = total_len // 2
+    return [text[:mid], text[mid:]]
+
+# ============================================================
 # ★ 多品类模板注册表 v3.0
 # ============================================================
 
@@ -731,7 +837,7 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
     if not rich_title:
         return y_start
 
-    # ★ v4.3: 按 \n 拆分，每行独立 parse + textwrap
+    # ★ v5.3: 智能语义分词换行（两行字数均衡，按语义单元切分）
     raw_lines = rich_title.split('\n')
     all_rendered_lines = []  # [(line_text, list_of_segments), ...]
     for raw_line in raw_lines:
@@ -739,7 +845,14 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
             continue
         segs = parse_rich_text(raw_line)
         line_text = ''.join(s[0] for s in segs)
-        wrapped = textwrap.wrap(line_text, width=15) if line_text else ['']
+        
+        # ★ FIX #2 v5.3: 使用语义智能分词，不是简单按字数切
+        # 如果标题较长（>6字），尝试分成两行，按语义单元切分
+        if len(line_text) > 6:
+            wrapped = semantic_split(line_text, max_lines=2)
+        else:
+            wrapped = [line_text]
+        
         # 把 segs 分配到每个 wrapped 子行
         seg_idx = 0
         for wline in wrapped:
@@ -768,34 +881,44 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
 
         if align == "center":
             if use_huazi:
-                # ★ 方案B：花字先渲染到临时层，实测像素宽度，再居中
+                # ★ 方案C（v5.2）：花字渲染到临时层，双向边界检测，更精准居中
                 tmp_w = base.width
-                tmp_h = int(font_size * 2.5)
+                tmp_h = int(font_size * 3.0)  # 增高以防花字扩展超出
                 tmp = Image.new("RGBA", (tmp_w, tmp_h), (0, 0, 0, 0))
                 try:
                     hr = get_huazi_renderer()
                     hr.render(tmp, line_text, effective_huazi,
-                             0, int(font_size * 0.3),
+                             0, int(font_size * 0.5),  # y偏移增大
                              font_family=font_family or _FONT_FAMILY,
                              font_weight="Bold", font_size=font_size,
                              accent_color=t.get("accent"),
                              bg_color=t.get("bg_color"))
-                    # 检测实际渲染像素的右边界
+                    # ★ FIX #3: 双向边界检测（左+右），阈值从>10降至>5，更灵敏
                     tmp_arr = np.array(tmp)
                     alpha = tmp_arr[:, :, 3]
                     col_alpha = np.max(alpha, axis=0)
-                    nonzero = np.where(col_alpha > 10)[0]
-                    actual_w = nonzero[-1] + 1 if len(nonzero) > 0 else tmp_w
-                    line_x = max(0, (base.width - actual_w) // 2)
+                    nonzero_cols = np.where(col_alpha > 5)[0]
+                    if len(nonzero_cols) > 0:
+                        actual_left = nonzero_cols[0]
+                        actual_right = nonzero_cols[-1] + 1
+                        actual_w = actual_right - actual_left
+                    else:
+                        actual_w = tmp_w
+                        actual_left = 0
+                    line_x = max(_s(40), (base.width - actual_w) // 2 - actual_left)
+                    # 安全钳位：不超右边界
+                    if line_x + actual_w > base.width - _s(40):
+                        line_x = max(_s(40), base.width - _s(40) - actual_w)
                 except Exception:
                     tw = _text_size(line_text, _font(font_size, bold=has_bold, family=font_family))[0]
                     line_x = (base.width - tw) // 2
             else:
                 # 非花字：_text_size 测量准确
                 tw = _text_size(line_text, _font(font_size, bold=has_bold, family=font_family))[0]
-                line_x = (base.width - tw) // 2
+                line_x = max(_s(40), (base.width - tw) // 2)
         else:
-            line_x = _s(28)
+            # ★ FIX #1: 左右内边距从 _s(28) 增至 _s(40)
+            line_x = _s(40)
 
         if use_huazi:
             try:
@@ -825,7 +948,7 @@ def _render_rich_subtitle(draw, base, t, rich_subtitle, y_start, huazi=None, fon
     if not rich_subtitle:
         return y_start
 
-    # ★ v4.3: 按 \n 拆分，每行独立 parse + textwrap
+    # ★ v4.4: 按 \n 拆分，每行独立 parse + textwrap（width=12 防中文溢出）
     raw_lines = rich_subtitle.split('\n')
     all_rendered_lines = []
     for raw_line in raw_lines:
@@ -833,7 +956,8 @@ def _render_rich_subtitle(draw, base, t, rich_subtitle, y_start, huazi=None, fon
             continue
         segs = parse_rich_text(raw_line)
         line_text = ''.join(s[0] for s in segs)
-        wrapped = textwrap.wrap(line_text, width=15) if line_text else ['']
+        # ★ FIX #2: 副标题 width 从 15 降至 12
+        wrapped = textwrap.wrap(line_text, width=12) if line_text else ['']
         seg_idx = 0
         for wline in wrapped:
             wsegs, rem = [], len(wline)
@@ -854,9 +978,11 @@ def _render_rich_subtitle(draw, base, t, rich_subtitle, y_start, huazi=None, fon
             continue
         tw_line = _text_size(line_text, _font(font_size))[0]  # 不用 family，与花字一致
         if align == "center":
-            line_x = (base.width - tw_line) // 2
+            # ★ FIX #3: 副标题居中钳位，不贴边缘
+            line_x = max(_s(40), (base.width - tw_line) // 2)
         else:
-            line_x = _s(28)
+            # ★ FIX #1: 副标题左右内边距从 _s(28) 增至 _s(40)
+            line_x = _s(40)
 
         if effective_huazi and HUAZI_TEMPLATES.get(effective_huazi):
             try:
@@ -1352,6 +1478,8 @@ def generate_cover(
     specs_huazi=None,
     title_size=None,
     subtitle_size=None,
+    # ★ v5.3: 副标题显示控制
+    no_subtitle=False,
 ):
     """
     cover_layout 模式:
@@ -1392,6 +1520,11 @@ def generate_cover(
 
     _TITLE_SIZE = title_size
     _SUBTITLE_SIZE = subtitle_size
+    
+    # ★ v5.3: 如果 --no-subtitle，清空 subtitle
+    if no_subtitle:
+        subtitle = ""
+    
     # 花字：如果没指定则自动匹配模板
     _HUAZI_TITLE = title_huazi or resolve_huazi_for_template(resolve_template(category, template)[2])
     _HUAZI_SUBTITLE = subtitle_huazi
@@ -1514,9 +1647,10 @@ def _layout_image_above(base, draw, t, w, h,
                         image_paths, has_multi, image_layout, image_position,
                         image_glow, image_reflection, image_labels,
                         title, subtitle, specs, tags, price_text, accent_line_text):
-    """★ v5.0 图片在上一半 → 文字在下一半，纯比例驱动"""
+    """★ v5.2 图片在上一半 → 文字在下一半，纯比例驱动（增加左右边距）"""
     HALF = int(h * 0.50)
-    MARGIN = int(h * 0.03)
+    # ★ FIX #1: MARGIN 从 3% 增至 5%，文字不贴边缘
+    MARGIN = int(h * 0.05)
 
     # ---- 上半：图片 ----
     if image_paths:
@@ -1543,9 +1677,10 @@ def _layout_text_above(base, draw, t, w, h,
                        image_paths, has_multi, image_layout, image_position,
                        image_glow, image_reflection, image_labels,
                        title, subtitle, specs, tags, price_text, accent_line_text):
-    """★ v5.0 文字上一半 → 图片下一半，纯比例驱动"""
+    """★ v5.2 文字上一半 → 图片下一半，纯比例驱动（增加左右边距）"""
     HALF = int(h * 0.50)
-    MARGIN = int(h * 0.03)
+    # ★ FIX #1: MARGIN 从 3% 增至 5%
+    MARGIN = int(h * 0.05)
 
     # ---- 上半：文字（居中）----
     cy = MARGIN
@@ -1682,6 +1817,8 @@ def main():
     # 文字
     parser.add_argument("--title", default="", help="L1 钩子标题，支持富文本标记")
     parser.add_argument("--subtitle", default="", help="L2 副标题，支持富文本标记")
+    parser.add_argument("--no-subtitle", action="store_true",
+                        help="隐藏副标题（即使传了--subtitle也不显示）")
     parser.add_argument("--specs", nargs="*", default=[],
                         help='规格参数，格式: "标签:数值" (2-4组)')
     parser.add_argument("--tags", nargs="*", default=[], help="底部标签 (2-5个)")
@@ -1828,6 +1965,8 @@ def main():
         specs_huazi=args.specs_huazi,
         title_size=args.title_size,
         subtitle_size=args.subtitle_size,
+        # ★ v5.3
+        no_subtitle=args.no_subtitle,
     )
     print(f"[DONE] {output}")
 
