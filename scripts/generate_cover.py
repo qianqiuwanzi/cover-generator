@@ -1520,6 +1520,15 @@ def generate_cover(
 
     _TITLE_SIZE = title_size
     _SUBTITLE_SIZE = subtitle_size
+
+    # ★ v6.0: 随机字体选择（如果未指定 font_family）
+    if _FONT_FAMILY is None:
+        fm = get_font_manager()
+        font_obj, chosen_family = fm.get_random(weight=font_weight_title, size=_TITLE_SIZE)
+        _FONT_FAMILY = chosen_family
+        print(f"  [font] 随机选择字体: {chosen_family}")
+    else:
+        print(f"  [font] 使用指定字体: {_FONT_FAMILY}")
     
     # ★ v5.3: 如果 --no-subtitle，清空 subtitle
     if no_subtitle:

@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-字体管理器 v1.0 — 字体发现、注册、缓存、回退
+字体管理器 v1.1 — 字体发现、注册、缓存、回退、随机选择
 支持：系统字体 + 内置 fonts/ 目录 + 用户自定义路径
+v1.1: 新增 get_random() 随机字体选择
 """
 
 import os
 import glob
 import struct
+import random
 from PIL import ImageFont
 
 # ============================================================
@@ -293,6 +295,46 @@ class FontManager:
         if resolved and resolved in self._registry:
             return self._find_best_weight(resolved, weight_num)
         return self._any_file()
+
+    def list_available(self):
+        """列出所有可用字体家族（详细信息）"""
+        result = []
+        for family in sorted(self._registry.keys()):
+            weights = sorted(self._registry[family].keys())
+            result.append({
+                'family': family,
+                'weights': weights,
+                'weight_names': [WEIGHT_CN.get(w, str(w)) for w in weights]
+            })
+        return result
+
+    def get_random(self, weight="Bold", size=46, exclude_families=None):
+        """
+        随机选择一个字体家族并返回字体对象
+
+        weight: 字重名称 (Regular/Bold/Heavy 等) 或数值
+        size:   字号
+        exclude_families: 排除的字体家族列表（如 ['Arial', 'Tahoma']）
+
+        返回: (ImageFont, family_name)
+        """
+        exclude_families = exclude_families or []
+
+        # 过滤可用字体
+        available = [
+            f for f in self._registry.keys()
+            if f not in exclude_families and 'Arial' not in f and 'Tahoma' not in f and 'Segoe' not in f
+        ]
+
+        if not available:
+            available = list(self._registry.keys())
+
+        # 随机选择
+        family = random.choice(available)
+
+        # 获取字体
+        font = self.get(family=family, weight=weight, size=size)
+        return font, family
 
     @property
     def available_count(self):
