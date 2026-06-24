@@ -120,6 +120,8 @@ class FontManager:
         self._registry = {}    # {family: {weight_num: (filepath, style)}}
         self._cache = {}       # {(family, weight, size): ImageFont}
         self._file_index = []  # [(filepath, family, weight, style)]
+        self._cjk_families = set()  # ★ 支持中文的字体家族
+        self._builtin_dir = self.font_dirs[0] if self.font_dirs else ''
         self._scan()
 
     @staticmethod
@@ -161,6 +163,9 @@ class FontManager:
                         family, weight, style = _parse_font_meta(fp)
                         self._file_index.append((fp, family, weight, style))
                         self._registry.setdefault(family, {})[weight] = (fp, style)
+                        # ★ 内置字体目录的在建字体全部支持中文
+                        if os.path.abspath(d) == os.path.abspath(self._builtin_dir):
+                            self._cjk_families.add(family)
 
     def get(self, family=None, weight="Bold", size=46):
         """
@@ -310,27 +315,44 @@ class FontManager:
 
     def get_random(self, weight="Bold", size=46, exclude_families=None):
         """
-        随机选择一个字体家族并返回字体对象
+        随机选择一个支持中文的字体家族并返回字体对象
 
         weight: 字重名称 (Regular/Bold/Heavy 等) 或数值
         size:   字号
-        exclude_families: 排除的字体家族列表（如 ['Arial', 'Tahoma']）
+        exclude_families: 排除的字体家族列表
 
         返回: (ImageFont, family_name)
         """
         exclude_families = exclude_families or []
 
-        # 过滤可用字体
-        available = [
-            f for f in self._registry.keys()
-            if f not in exclude_families and 'Arial' not in f and 'Tahoma' not in f and 'Segoe' not in f
+        # ★ 只从支持中文的字体中随机选择（内置 fonts/ 目录的字体）
+        cjk_available = [
+            f for f in self._cjk_families
+            if f not in exclude_families
         ]
 
-        if not available:
-            available = list(self._registry.keys())
+        if not cjk_available:
+            # 回退：从全部字体中过滤常见拉丁字体名
+            cjk_available = [
+                f for f in self._registry.keys()
+                if f not in exclude_families
+                and 'Arial' not in f and 'Tahoma' not in f and 'Segoe' not in f
+                and 'Calibri' not in f and 'Times' not in f and 'Georgia' not in f
+                and 'Impact' not in f and 'Verdana' not in f and 'Trebuchet' not in f
+                and 'Courier' not in f and 'Comic' not in f and 'Consola' not in f
+                and 'Roboto' not in f and 'Corbel' not in f and 'Constantia' not in f
+                and 'Cambria' not in f and 'Candara' not in f and 'Palatino' not in f
+                and 'Lucida' not in f and 'Microsoft' not in f and 'Malgun' not in f
+                and 'Gulim' not in f and 'Batang' not in f and 'Dotum' not in f
+                and 'Nirmala' not in f and 'Ebrima' not in f and 'Gadugi' not in f
+                and 'Leelawadee' not in f and 'Javanese' not in f and 'Myanmar' not in f
+            ]
+
+        if not cjk_available:
+            cjk_available = list(self._registry.keys())
 
         # 随机选择
-        family = random.choice(available)
+        family = random.choice(cjk_available)
 
         # 获取字体
         font = self.get(family=family, weight=weight, size=size)

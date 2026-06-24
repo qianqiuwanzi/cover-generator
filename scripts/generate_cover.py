@@ -64,21 +64,59 @@ def _s(v):
     return int(v * SCALE)
 
 # ============================================================
-# ★ 语义智能分词换行 v5.3
+# ★ 语义智能分词换行 v5.4 — jieba分词 + 语义约束
 # ============================================================
+
+# 已知的复合语义单元（jieba可能不认识的品牌名/术语）
+_KNOWN_COMPOUNDS = [
+    'AI时代', '大模型', '智能体', 'OpenClaw',
+    '2026年', '2025年', '2024年', '全国首台', '全球首个',
+]
+
+def _jieba_boundaries(text):
+    """
+    使用 jieba 分词找出所有"不可切断"的词边界。
+    返回 set: 所有词边界位置（词的起始和结束索引）
+    """
+    try:
+        import jieba
+        words = list(jieba.cut(text))
+    except ImportError:
+        words = list(text)  # 逐字回退
+
+    boundaries = set()
+    pos = 0
+    for w in words:
+        boundaries.add(pos)           # 词起始
+        boundaries.add(pos + len(w))  # 词结束
+        pos += len(w)
+
+    # 补充已知复合词边界（jieba可能不认识的术语）
+    for compound in _KNOWN_COMPOUNDS:
+        start = 0
+        while True:
+            idx = text.find(compound, start)
+            if idx == -1:
+                break
+            boundaries.add(idx)
+            boundaries.add(idx + len(compound))
+            start = idx + 1
+
+    return boundaries
+
 
 def semantic_split(text, max_lines=2):
     """
-    按语义智能分词换行，确保：
-    1. 语义单元完整（"AI时代"不拆开，"建设"不拆开）
+    按语义智能分词换行，基于 jieba 分词确保：
+    1. 语义单元完整（"程序员"不拆开，"AI时代"不拆开）
     2. 两行字数尽量均衡（差值尽量小）
     3. 语义单元完整性 > 字数均衡（宁可略不均衡，也要保持语义完整）
-    
+
     返回: list[str] - 分好的行
     """
     if not text or len(text) <= 4:
         return [text]
-    
+
     # 语义分隔符 - 直接切分
     for sep in ['|', '·', '—', '--', '｜']:
         if sep in text:
@@ -87,84 +125,53 @@ def semantic_split(text, max_lines=2):
                 p0, p1 = parts[0].strip(), parts[1].strip()
                 if p0 and p1:
                     return [p0, p1]
-    
-    # 语义单元集合（用于识别边界）
-    semantic_units = [
-        'AI时代', '人工智能', '机器学习', '深度学习', '神经网络', '大模型',
-        '算力', '芯片', '数据中心', '云计算', '边缘计算', '物联网', '区块链',
-        '开始建设', '落地', '建成', '布局', '部署', '建设',
-        '2026年', '2025年', '2024年', '全国首台', '全球首个',
-        '年化收益', '资产配置', '风险管理', '财务自由',
-        '最重要的', '最关键的', '最核心的', '最实用的', '最简单的',
-        '的一张网', '的秘密', '的真相', '的方法', '的技巧', '的套路',
-        '设备落地', '最重要', '的一张',
-        # 国家/地区词（不独立拆开）
-        '中国', '全国', '全球',
-    ]
-    
-    # 找到所有语义单元的边界位置
-    unit_boundaries = set()  # 语义单元的起始索引集合
-    for unit in semantic_units:
-        start = 0
-        while True:
-            idx = text.find(unit, start)
-            if idx == -1:
-                break
-            unit_boundaries.add(idx)
-            unit_boundaries.add(idx + len(unit))
-            start = idx + 1
-    
-    # 预计算每个候选切分点的"语义纯度"
+
+    # ★ v5.4: 用 jieba 分词获取语义边界（替代硬编码白名单）
+    unit_boundaries = _jieba_boundaries(text)
+
     total_len = len(text)
-    
-    # DP: dp[i] = (score, split_point) 在位置i切分的最好score
-    # score越低越好 = 语义完整性奖励 - 字数不均衡惩罚
-    import math
-    
-    # 候选切分点：在语义边界处 OR 每4-8字间隔
+
+    # 候选切分点：语义边界 + 每2字候选点
     candidates = set()
-    # 语义边界
     for b in sorted(unit_boundaries):
         if 2 <= b <= total_len - 2:
             candidates.add(b)
-    # 均衡切分点（每6字一个候选）
-    step = max(4, min(8, total_len // 3))
     for pos in range(2, total_len - 1, 2):
         candidates.add(pos)
-    
+
     # 尝试每个候选，找最均衡且在语义边界上的
     best_split = None
     best_score = float('inf')
-    
+
     for i in sorted(candidates):
         len1, len2 = i, total_len - i
         if len1 < 2 or len2 < 2:
             continue
-        
+
         # 分数：字数差平方 + 语义惩罚
         len_diff = abs(len1 - len2)
         score = len_diff * len_diff
-        
+
         # 语义评估：精确边界 > 附近边界 > 无边界
         exact_boundary = i in unit_boundaries and 2 <= i <= total_len - 2
         if exact_boundary:
-            score -= 10  # 精确语义边界奖励（如"AI时代"后断开，优先于字数均衡）
+            score -= 10  # 精确语义边界奖励
         else:
             near_boundary = any(abs(i - b) <= 1 for b in unit_boundaries if 1 <= b <= total_len - 1)
             if not near_boundary:
-                score += 50  # 不在语义边界附近，大惩罚
-        
+                score += 80  # 不在语义边界附近，大幅惩罚（50→80，强化语义保护）
+
         # 避免单字行
         if len1 == 1 or len2 == 1:
             score += 100
-        
+
         if score < best_score:
             best_score = score
             best_split = i
-    
+
     if best_split:
         return [text[:best_split], text[best_split:]]
-    
+
     # 兜底：均衡切分
     mid = total_len // 2
     return [text[:mid], text[mid:]]
@@ -840,15 +847,20 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
     # ★ v5.3: 智能语义分词换行（两行字数均衡，按语义单元切分）
     raw_lines = rich_title.split('\n')
     all_rendered_lines = []  # [(line_text, list_of_segments), ...]
+    # ★ 如调用方已传\n（如 JS cover.js 手动断句），跳过二次分词
+    has_explicit_newline = '\n' in rich_title
     for raw_line in raw_lines:
         if not raw_line.strip():
             continue
         segs = parse_rich_text(raw_line)
         line_text = ''.join(s[0] for s in segs)
         
-        # ★ FIX #2 v5.3: 使用语义智能分词，不是简单按字数切
-        # 如果标题较长（>6字），尝试分成两行，按语义单元切分
-        if len(line_text) > 6:
+        if has_explicit_newline:
+            # 调用方已手动断句，保留原始行
+            wrapped = [line_text]
+        elif len(line_text) > 6:
+            # ★ FIX #2 v5.3: 使用语义智能分词，不是简单按字数切
+            # 如果标题较长（>6字），尝试分成两行，按语义单元切分
             wrapped = semantic_split(line_text, max_lines=2)
         else:
             wrapped = [line_text]
@@ -1717,27 +1729,31 @@ def _layout_text_surround(base, draw, t, w, h,
                           image_paths, has_multi, image_layout, image_position,
                           image_glow, image_reflection, image_labels,
                           title, subtitle, specs, tags, price_text, accent_line_text):
-    """★ v5.1 文字上下包裹：上文字 | 等距 | 图片 | 等距 | 下文字"""
+    """★ v5.2 文字上下包裹：上文字+副标题 | 等距 | 图片 | 等距 | 下文字+tags"""
     title_lines = title.split('\n') if title else []
     title_top = title_lines[0] if len(title_lines) > 0 else ''
     title_bottom = title_lines[1] if len(title_lines) > 1 else ''
 
-    MARGIN = int(h * 0.05)  # 5% 补偿光晕/花字扩展
+    MARGIN = int(h * 0.05)  # 5%
 
-    # ---- 上区：顶部标题 ----
+    # ---- 上区：顶部标题 + 副标题 ----
     cy = MARGIN
     if title_top:
         cy = _render_rich_title(draw, base, t, title_top, cy, align="center")
+    # ★ Bug fix: subtitle 之前被遗漏，现在渲染在标题下方
+    if subtitle:
+        cy = _render_rich_subtitle(draw, base, t, subtitle, cy, align="center")
     top_end = cy
 
-    # ---- 下区文字预测量 ----
+    # ---- 下区文字预测量（仅 title_bottom，不复用 subtitle 避免重复）----
     tmp = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     tmp_draw = ImageDraw.Draw(tmp)
     bot_h = 0
     if title_bottom:
-        bot_h = _render_rich_title(tmp_draw, tmp, t, title_bottom, 0, align="center")
+        bot_h = _render_rich_subtitle(tmp_draw, tmp, t, title_bottom, 0, align="center")
+        bot_h += _s(16)  # 底部留白
 
-    # ---- 中区：图片在上下文字之间，等距 ----
+    # ---- 中区：图片在上下文字之间，垂直居中 ----
     img_start = top_end + MARGIN
     img_end = h - bot_h - MARGIN
     image_box = None
@@ -1748,15 +1764,15 @@ def _layout_text_surround(base, draw, t, w, h,
         else:
             product = Image.open(image_paths[0]).convert("RGBA")
             pw, ph = product.size
-            # 图片最多占可用空间的 65%，留呼吸感
-            avail_w = (w - MARGIN * 2) * 0.65
-            avail_h = (img_end - img_start) * 0.65
+            avail_w = (w - MARGIN * 2) * 0.75
+            avail_h = (img_end - img_start) * 0.70
             if pw > 0 and ph > 0 and avail_h > 0:
                 scale = min(avail_w / pw, avail_h / ph)
                 nw, nh = int(pw * scale), int(ph * scale)
                 product = product.resize((nw, nh), Image.LANCZOS)
                 x0 = (w - nw) // 2
-                y0 = img_start  # 贴顶：gap1=MARGIN, gap2=img_bottom+MARGIN
+                # ★ 垂直居中而不是贴顶
+                y0 = img_start + (img_end - img_start - nh) // 2
                 alpha_mask = _extract_alpha_mask(product)
                 if image_glow in ("backlight", "both"):
                     _add_product_backlight(base, product, (x0, y0), alpha_mask, t)
@@ -1765,11 +1781,11 @@ def _layout_text_surround(base, draw, t, w, h,
                 base.paste(product, (x0, y0), alpha_mask if product.mode == 'RGBA' else None)
                 image_box = (x0, y0, x0 + nw, y0 + nh)
 
-    # ---- 下区：底部标题（图片实际底部 + MARGIN）----
+    # ---- 下区：底部标题（仅 title_bottom，不为空时渲染）----
     img_bottom = image_box[3] if image_box else img_end
-    bot_start = img_bottom + MARGIN + int(h * 0.03)  # +3% 补偿阴影向下延伸
+    bot_start = img_bottom + MARGIN
     if title_bottom:
-        _render_rich_title(draw, base, t, title_bottom, bot_start, align="center")
+        _render_rich_subtitle(draw, base, t, title_bottom, bot_start, align="center")
     if tags and len(tags) > 0:
         _render_tags(draw, base, t, tags, h - MARGIN - int(h * 0.04))
 
