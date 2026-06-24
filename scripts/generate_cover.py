@@ -847,22 +847,25 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
     # ★ v5.3: 智能语义分词换行（两行字数均衡，按语义单元切分）
     raw_lines = rich_title.split('\n')
     all_rendered_lines = []  # [(line_text, list_of_segments), ...]
-    # ★ 如调用方已传\n（如 JS cover.js 手动断句），跳过二次分词
-    has_explicit_newline = '\n' in rich_title
+    # ★ [2026-06-24] 用实际渲染像素检测是否超宽，取代硬编码字符数阈值
+    #   - 中/英/加粗/花字实际宽度差异大，字符数无法准确判断
+    #   - 可用宽度 = 画布宽 - 左右内边距
+    avail_w = base.width - 2 * _s(40)
     for raw_line in raw_lines:
         if not raw_line.strip():
             continue
         segs = parse_rich_text(raw_line)
         line_text = ''.join(s[0] for s in segs)
         
-        if has_explicit_newline:
-            # 调用方已手动断句，保留原始行
-            wrapped = [line_text]
-        elif len(line_text) > 6:
-            # ★ FIX #2 v5.3: 使用语义智能分词，不是简单按字数切
-            # 如果标题较长（>6字），尝试分成两行，按语义单元切分
+        # 测量此行渲染后的实际像素宽度
+        meas_font = _font(font_size, bold=True)
+        line_px, _ = _text_size(line_text, meas_font)
+        
+        if line_px > avail_w:
+            # 实际超宽，语义分词后换行
             wrapped = semantic_split(line_text, max_lines=2)
         else:
+            # 实际宽度足够，保持原行（无论是否来自调用方手动断句）
             wrapped = [line_text]
         
         # 把 segs 分配到每个 wrapped 子行
