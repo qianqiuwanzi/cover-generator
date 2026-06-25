@@ -797,7 +797,7 @@ def _render_rich_line(base, t, segments, x, y, base_font_size=None, line_spacing
         invert = style.get('invert', False)
 
         size = base_font_size + (_s(2) if stroke_only else 0)
-        font = _font(size, bold=bold or accent or glow)
+        font = _font(size, bold=True)  # ★ v6.3: 所有封面文字均加粗
 
         if accent:       fg = t["accent"]
         elif secondary:  fg = t["text_secondary"]
@@ -1386,7 +1386,7 @@ def _render_specs_bar(draw, base, t, specs, y_start, huazi_val=None, font_family
 
 
 def _render_tags(draw, base, t, tags, y_start, huazi=None, font_family=None):
-    f_tag = _font(_s(17), family=font_family)
+    f_tag = _font(_s(17), bold=True, family=font_family)  # ★ v6.3: 标签加粗
     x, th = _s(28), _s(34)
     tag_huazi = huazi or _HUAZI_TAGS
     for i, tag_text in enumerate(tags):
@@ -1449,7 +1449,7 @@ def _render_price_badge(draw, base, t, price_text, x, y, huazi=None, font_family
 
 def _render_watermark_line(draw, t):
     w, h = CANVAS_SIZE
-    f = _font(_s(11))
+    f = _font(_s(11), bold=True)  # ★ v6.3: 水印加粗
     draw.line([(_s(24), h - _s(42)), (w - _s(24), h - _s(42))], fill=t["divider"], width=_s(1))
     draw.text((_s(30), h - _s(34)), "@CREATOR", fill=t["text_secondary"], font=f)
 
