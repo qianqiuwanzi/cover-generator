@@ -810,7 +810,7 @@ def _render_rich_line(base, t, segments, x, y, base_font_size=None, line_spacing
             cx += _text_size(text, font)[0] + _s(6)
         elif stroke_only:
             _render_text_stroke(base, (cx, y), text, font, t["bg_color"],
-                              t["accent"], stroke_width=_s(5))   # ★ v6.1: 描边加粗 3→5
+                              t["accent"], stroke_width=_s(7))   # ★ v6.2: 描边再加深 5→7
             cx += _text_size(text, font)[0] + _s(6)
         elif block:
             _render_text_block(base, (cx, y), text, font,
@@ -827,10 +827,10 @@ def _render_rich_line(base, t, segments, x, y, base_font_size=None, line_spacing
             if t.get("is_dark", True):
                 if accent or secondary:
                     _render_text_stroke(base, (cx, y), text, font, fg,
-                                      t["stroke_color"], stroke_width=_s(3))  # ★ v6.1: 描边加粗 2→3
+                                      t["stroke_color"], stroke_width=_s(5))  # ★ v6.2: 描边再加深 3→5
                 else:
                     _text_with_shadow(draw, (cx, y), text, font, fg,
-                                    shadow_color=t["stroke_color"], offset=_s(3))  # ★ v6.1: 阴影加深 2→3
+                                    shadow_color=t["stroke_color"], offset=_s(5))  # ★ v6.2: 阴影加深 3→5
             else:
                 draw.text((cx, y), text, fill=fg, font=font)
             cx += _text_size(text, font)[0] + _s(4)
@@ -1706,8 +1706,18 @@ def _layout_text_above(base, draw, t, w, h,
     # ★ FIX #1: MARGIN 从 3% 增至 5%
     MARGIN = int(h * 0.05)
 
-    # ---- 上半：文字（居中）----
-    cy = MARGIN
+    # ---- 上半：文字（居中于上半区）----
+    # ★ [2026-06-24 fix] 先往临时图片渲染一次，测出文字块总高度，再居中
+    _tmp = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    _tmp_draw = ImageDraw.Draw(_tmp)
+    _meas_cy = MARGIN
+    if title:
+        _meas_cy = _render_rich_title(_tmp_draw, _tmp, t, title, _meas_cy, align="center")
+    if subtitle:
+        _meas_cy = _render_rich_subtitle(_tmp_draw, _tmp, t, subtitle, _meas_cy, align="center")
+    _text_block_h = _meas_cy - MARGIN
+    # 在上半区垂直居中
+    cy = max(MARGIN, int((HALF - _text_block_h) / 2))
     if title:
         cy = _render_rich_title(draw, base, t, title, cy, align="center")
     if subtitle:
