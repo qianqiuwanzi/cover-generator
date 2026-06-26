@@ -216,10 +216,10 @@ CATEGORIES = {
                 "tag_text": (195, 205, 235),
                 "divider": (38, 42, 68),
                 "glow_color": (255, 195, 40),
-                "stroke_color": (0, 0, 10),
+                "stroke_color": (50, 60, 90),  # ★ v6.4: 亮色描边替代黑色(0,0,10)，确保暗底可见
                 "block_bg": (40, 35, 15),
                 "block_text": (255, 235, 180),
-                "shadow_color": (0, 0, 8),
+                "shadow_color": (30, 40, 70),  # ★ v6.4: 亮阴影替代黑色(0,0,8)
                 "backlight_color": (255, 195, 40),
                 "is_dark": True,
             },
@@ -536,10 +536,10 @@ CATEGORIES = {
                 "tag_text": (200, 210, 235),
                 "divider": (38, 46, 70),
                 "glow_color": (220, 180, 45),
-                "stroke_color": (3, 5, 12),
+                "stroke_color": (45, 55, 85),  # ★ v6.4: 亮色描边替代黑色(3,5,12)
                 "block_bg": (35, 30, 15),
                 "block_text": (240, 215, 150),
-                "shadow_color": (2, 4, 10),
+                "shadow_color": (30, 40, 65),  # ★ v6.4: 亮阴影替代黑色(2,4,10)
                 "backlight_color": (220, 180, 45),
                 "is_dark": True,
             },
@@ -722,7 +722,7 @@ def _text_size(text, font):
 
 def _render_text_stroke(base, xy, text, font, fill_color, stroke_color, stroke_width=None):
     if stroke_width is None:
-        stroke_width = int(3 * SCALE)
+        stroke_width = int(6 * SCALE)  # ★ 默认描边加粗 3→6（两倍）
     x, y = xy
     draw = ImageDraw.Draw(base)
     for dx in range(-stroke_width, stroke_width + 1):
@@ -810,7 +810,7 @@ def _render_rich_line(base, t, segments, x, y, base_font_size=None, line_spacing
             cx += _text_size(text, font)[0] + _s(6)
         elif stroke_only:
             _render_text_stroke(base, (cx, y), text, font, t["bg_color"],
-                              t["accent"], stroke_width=_s(7))   # ★ v6.2: 描边再加深 5→7
+                              t["accent"], stroke_width=_s(24))  # ★ 描边加粗 12→24（两倍）
             cx += _text_size(text, font)[0] + _s(6)
         elif block:
             _render_text_block(base, (cx, y), text, font,
@@ -827,10 +827,10 @@ def _render_rich_line(base, t, segments, x, y, base_font_size=None, line_spacing
             if t.get("is_dark", True):
                 if accent or secondary:
                     _render_text_stroke(base, (cx, y), text, font, fg,
-                                      t["stroke_color"], stroke_width=_s(5))  # ★ v6.2: 描边再加深 3→5
+                                      t["stroke_color"], stroke_width=_s(16))  # ★ 描边加粗 8→16（两倍）
                 else:
                     _text_with_shadow(draw, (cx, y), text, font, fg,
-                                    shadow_color=t["stroke_color"], offset=_s(5))  # ★ v6.2: 阴影加深 3→5
+                                    shadow_color=t["stroke_color"], offset=_s(8))  # ★ v6.4: 阴影加粗 5→8
             else:
                 draw.text((cx, y), text, fill=fg, font=font)
             cx += _text_size(text, font)[0] + _s(4)
@@ -1784,8 +1784,10 @@ def _layout_text_surround(base, draw, t, w, h,
                 nw, nh = int(pw * scale), int(ph * scale)
                 product = product.resize((nw, nh), Image.LANCZOS)
                 x0 = (w - nw) // 2
-                # ★ 垂直居中而不是贴顶
-                y0 = img_start + (img_end - img_start - nh) // 2
+                # ★ v5.3: 上下间隙对称 — 不居中于 [img_start, img_end]，而是让上方文字到图片=图片到下方文字
+                total_avail = (h - bot_h - MARGIN) - top_end - nh
+                gap = max(MARGIN, total_avail // 2)
+                y0 = top_end + gap
                 alpha_mask = _extract_alpha_mask(product)
                 if image_glow in ("backlight", "both"):
                     _add_product_backlight(base, product, (x0, y0), alpha_mask, t)
