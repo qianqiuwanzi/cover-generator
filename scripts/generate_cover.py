@@ -777,6 +777,51 @@ def _text_with_shadow(draw, xy, text, font, fill, shadow_color=(0, 0, 0), offset
     draw.text((x, y), text, fill=fill, font=font)
 
 
+def _measure_line_width(t, segments, base_font_size=None, font_family=None):
+    """计算 _render_rich_line 的实际渲染宽度（含段间间距）。
+
+    根因修复 v6.5: _render_rich_title 居中时用 _text_size(line_text) 测量整行，但
+    _render_rich_line 逐段渲染并添加不同间距（+_s(4)/_s(6)/_s(22)），导致测量宽度≠实际宽度，
+    文字偏离中心。
+
+    此函数逐一测量每段宽度+间距，返回精确的渲染后总宽度。
+    """
+    if base_font_size is None:
+        base_font_size = _s(46)
+
+    total_w = 0
+    for text, style in segments:
+        if not text:
+            continue
+        accent = style.get('accent', False)
+        secondary = style.get('secondary', False)
+        bold = style.get('bold', False)
+        slant = style.get('slant', False)
+        block = style.get('block', False)
+        glow = style.get('glow', False)
+        stroke_only = style.get('stroke_only', False)
+
+        size = base_font_size + (_s(2) if stroke_only else 0)
+        font = _font(size, bold=True, family=font_family)
+
+        seg_w = _text_size(text, font)[0]
+
+        if glow:
+            total_w += seg_w + _s(6)
+        elif stroke_only:
+            total_w += seg_w + _s(6)
+        elif block:
+            total_w += seg_w + _s(22)  # _s(16) + _s(6)
+        elif slant:
+            th = _text_size(text, font)[1]
+            pad = abs(int(th * math.tan(math.radians(12)))) + _s(5)
+            total_w += seg_w + pad + _s(4)
+        else:
+            total_w += seg_w + _s(4)
+
+    return total_w
+
+
 def _render_rich_line(base, t, segments, x, y, base_font_size=None, line_spacing=None):
     if base_font_size is None:
         base_font_size = _s(46)
@@ -925,11 +970,13 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
                     if line_x + actual_w > base.width - _s(40):
                         line_x = max(_s(40), base.width - _s(40) - actual_w)
                 except Exception:
-                    tw = _text_size(line_text, _font(font_size, bold=has_bold, family=font_family))[0]
+                    tw = _measure_line_width(t, line_segs, base_font_size=font_size, font_family=font_family)
                     line_x = (base.width - tw) // 2
             else:
-                # 非花字：_text_size 测量准确
-                tw = _text_size(line_text, _font(font_size, bold=has_bold, family=font_family))[0]
+                # ★ v6.5 fix: 按逐段+间距精确测量实际渲染宽度，替代 _text_size(line_text)
+                #   根因：_text_size 测量拼接文本不包含段间 _s(4)/_s(6)/_s(22) 间距，
+                #   导致 line_x 偏大，左 margin ≠ 右 margin，文字不居中
+                tw = _measure_line_width(t, line_segs, base_font_size=font_size, font_family=font_family)
                 line_x = max(_s(40), (base.width - tw) // 2)
         else:
             # ★ FIX #1: 左右内边距从 _s(28) 增至 _s(40)
@@ -991,9 +1038,9 @@ def _render_rich_subtitle(draw, base, t, rich_subtitle, y_start, huazi=None, fon
     for line_text, line_segs in all_rendered_lines:
         if not line_text.strip():
             continue
-        tw_line = _text_size(line_text, _font(font_size))[0]  # 不用 family，与花字一致
+        # ★ v6.5 fix: 按逐段+间距精确测量实际渲染宽度，替代 _text_size(line_text)
+        tw_line = _measure_line_width(t, line_segs, base_font_size=font_size, font_family=font_family)
         if align == "center":
-            # ★ FIX #3: 副标题居中钳位，不贴边缘
             line_x = max(_s(40), (base.width - tw_line) // 2)
         else:
             # ★ FIX #1: 副标题左右内边距从 _s(28) 增至 _s(40)
