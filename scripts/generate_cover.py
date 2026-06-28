@@ -109,8 +109,9 @@ def semantic_split(text, max_lines=2):
     """
     按语义智能分词换行，基于 jieba 分词确保：
     1. 语义单元完整（"程序员"不拆开，"AI时代"不拆开）
-    2. 两行字数尽量均衡（差值尽量小）
+    2. 各行字数尽量均衡（差值尽量小）
     3. 语义单元完整性 > 字数均衡（宁可略不均衡，也要保持语义完整）
+    4. max_lines 支持 2 或 3 行（含递归二次拆分）
 
     返回: list[str] - 分好的行
     """
@@ -170,11 +171,29 @@ def semantic_split(text, max_lines=2):
             best_split = i
 
     if best_split:
-        return [text[:best_split], text[best_split:]]
+        parts = [text[:best_split], text[best_split:]]
+        # ★ FIX: max_lines=3 时递归二次拆分，使长行不超过9字/行
+        # （1024px ÷ 102px ≈ 10字，但需留花字余量，阈值取9字）
+        if max_lines >= 3 and len(parts) == 2:
+            longer_idx = 0 if len(parts[0]) >= len(parts[1]) else 1
+            if len(parts[longer_idx]) > 9:
+                sub_parts = semantic_split(parts[longer_idx], max_lines=2)
+                if len(sub_parts) == 2:
+                    result = []
+                    result.extend(parts[:longer_idx])
+                    result.extend(sub_parts)
+                    result.extend(parts[longer_idx + 1:])
+                    return result
+        return parts
 
     # 兜底：均衡切分
     mid = total_len // 2
-    return [text[:mid], text[mid:]]
+    parts = [text[:mid], text[mid:]]
+    if max_lines >= 3 and len(parts[0]) > 9:
+        sub_parts = semantic_split(parts[0], max_lines=2)
+        if len(sub_parts) == 2:
+            return [sub_parts[0], sub_parts[1], parts[1]]
+    return parts
 
 # ============================================================
 # ★ 多品类模板注册表 v3.0
@@ -909,6 +928,21 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
         if line_px > avail_w:
             # 实际超宽，语义分词后换行
             wrapped = semantic_split(line_text, max_lines=2)
+            # ★ FIX v2: 二次溢出检测 — 2行不够时升级为3行
+            # 根因 v1：_TITLE_SIZE=102px，1024px可用宽度最多容纳10个中文字，
+            #   semantic_split 限 max_lines=2，若单行>10字必然溢出。
+            # 根因 v2：花字效果(glow/stroke)撑宽约20%，裸字体测量1020px"通过"
+            #   但花字实际渲染约1173px→溢出。需加花字安全余量。
+            _use_huazi = (huazi or _HUAZI_TITLE) and HUAZI_TEMPLATES.get(huazi or _HUAZI_TITLE)
+            _huazi_margin = 1.25 if _use_huazi else 1.0
+            _any_overflow = False
+            for _wl in wrapped:
+                _wl_px, _ = _text_size(_wl, meas_font)
+                if int(_wl_px * _huazi_margin) > avail_w:
+                    _any_overflow = True
+                    break
+            if _any_overflow:
+                wrapped = semantic_split(line_text, max_lines=3)
         else:
             # 实际宽度足够，保持原行（无论是否来自调用方手动断句）
             wrapped = [line_text]
@@ -988,7 +1022,7 @@ def _render_rich_title(draw, base, t, rich_title, y_start, huazi=None, font_fami
                 hr.render(base, line_text, effective_huazi,
                          line_x, cy,
                          font_family=font_family or _FONT_FAMILY,
-                         font_weight="Bold" if has_bold else "Regular",
+                         font_weight="Bold",  # ★ FIX: 封面标题始终加粗，不受富文本标记影响
                          font_size=font_size,
                          accent_color=t.get("accent"),
                          bg_color=t.get("bg_color"))
